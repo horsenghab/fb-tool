@@ -10,18 +10,24 @@ async function scrapeReelDescriptions(urls, onProgress = () => {}) {
     console.log(`Starting batch scrape for ${urls.length} reels...`);
     
     let browser;
+    const launchOptions = {
+        headless: true,
+        args: [
+            '--disable-notifications',
+            '--mute-audio',
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage'
+        ]
+    };
+
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
     try {
-        browser = await puppeteer.launch({
-            headless: true,
-            args: [
-                '--disable-notifications',
-                '--mute-audio',
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-gpu',
-                '--disable-dev-shm-usage'
-            ]
-        });
+        browser = await puppeteer.launch(launchOptions);
     } catch (err) {
         console.error("Failed to launch Puppeteer browser:", err);
         throw err;
