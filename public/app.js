@@ -8,6 +8,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnScrapeText = document.getElementById('btnScrapeText');
     const btnCopyAll = document.getElementById('btnCopyAll');
     const btnCopyAllText = document.getElementById('btnCopyAllText');
+    const btnCopyAsList = document.getElementById('btnCopyAsList');
+    const btnCopyAsListText = document.getElementById('btnCopyAsListText');
+    const btnGenerateScript = document.getElementById('btnGenerateScript');
+    const btnGenerateScriptText = document.getElementById('btnGenerateScriptText');
 
     const progressSection = document.getElementById('progressSection');
     const progressText = document.getElementById('progressText');
@@ -22,6 +26,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsList = document.getElementById('resultsList');
     const emptyState = document.getElementById('emptyState');
     const toast = document.getElementById('toast');
+
+    // AI Modal Elements
+    const aiModalOverlay = document.getElementById('aiModalOverlay');
+    const aiModalClose = document.getElementById('aiModalClose');
+    const aiModalOriginalText = document.getElementById('aiModalOriginalText');
+    const aiSuggestions = document.getElementById('aiSuggestions');
+    const aiModalLoading = document.getElementById('aiModalLoading');
+    const aiModalError = document.getElementById('aiModalError');
+    const aiModalErrorText = document.getElementById('aiModalErrorText');
 
     // State variables
     let scrapedResults = [];
@@ -75,6 +88,8 @@ document.addEventListener('DOMContentLoaded', () => {
         statFailed.textContent = '0';
 
         btnCopyAll.disabled = true;
+        btnCopyAsList.disabled = true;
+        btnGenerateScript.disabled = true;
         progressSection.classList.add('hidden');
         progressBarFill.style.width = '0%';
     }
@@ -164,6 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
             btnScrapeText.textContent = 'Start Scraping';
             if (scrapedResults.length > 0) {
                 btnCopyAll.disabled = false;
+                btnCopyAsList.disabled = false;
+                btnGenerateScript.disabled = false;
             }
         }
     });
@@ -216,13 +233,23 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="result-body">${escapeHtml(item.description)}</div>
             <div class="result-item-footer">
                 <span class="badge-status ${badgeClass}">${badgeText}</span>
-                <button type="button" class="btn btn-secondary btn-sm btn-copy-single">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                    Copy
-                </button>
+                <div class="result-footer-actions">
+                    ${isSuccess ? `<button type="button" class="btn btn-ai btn-sm btn-ai-enhance">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                            <path d="M2 17l10 5 10-5"></path>
+                            <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                        ✨ AI Enhance
+                    </button>` : ''}
+                    <button type="button" class="btn btn-secondary btn-sm btn-copy-single">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
             </div>
         `;
 
@@ -246,6 +273,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 1800);
         });
 
+        // AI Enhance Button handler (only rendered for successful scrapes)
+        const aiBtn = itemEl.querySelector('.btn-ai-enhance');
+        if (aiBtn) {
+            aiBtn.addEventListener('click', () => openAiModal(item.description, aiBtn));
+        }
+
         resultsList.appendChild(itemEl);
         resultsList.scrollTop = resultsList.scrollHeight;
     }
@@ -260,6 +293,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
         copyToClipboard(formattedText);
         showToast(`Copied ${scrapedResults.length} descriptions to clipboard!`);
+    });
+
+    // Copy as List Action — descriptions joined by commas (one per line)
+    btnCopyAsList.addEventListener('click', () => {
+        if (scrapedResults.length === 0) return;
+
+        const listText = scrapedResults
+            .filter(item => item.status === 'success' && item.description)
+            .map(item => item.description)
+            .join(',\n');
+
+        copyToClipboard(listText);
+
+        const count = scrapedResults.filter(item => item.status === 'success' && item.description).length;
+        showToast(`Copied ${count} descriptions as list!`);
+
+        const original = btnCopyAsListText.textContent;
+        btnCopyAsListText.textContent = 'Copied!';
+        setTimeout(() => { btnCopyAsListText.textContent = original; }, 1800);
+    });
+
+    // Generate Script Action — builds a browser-console auto-fill script
+    btnGenerateScript.addEventListener('click', () => {
+        if (scrapedResults.length === 0) return;
+
+        const descriptions = scrapedResults
+            .filter(function(item) { return item.status === 'success' && item.description; })
+            .map(function(item) { return item.description; });
+
+        // Build the JS array content with proper JSON escaping for each entry
+        var arrayLines = descriptions.map(function(desc, i) {
+            var escaped = JSON.stringify(desc);
+            return i < descriptions.length - 1
+                ? '  ' + escaped + ','
+                : '  ' + escaped;
+        }).join('\n');
+
+        var scriptParts = [
+            '// 1. Define your list of descriptions',
+            'const descriptions = [',
+            arrayLines,
+            '];',
+            '',
+            '// 2. Select all text areas that match your specified class',
+            '// Note: "description input-text" translates to the CSS selector ".description.input-text"',
+            'const textAreas = document.querySelectorAll(\'.description.input-text\');',
+            '',
+            '// 3. Loop through each text area and insert the corresponding description',
+            'textAreas.forEach((textArea, index) => {',
+            '  // Only insert if we have a description for this index',
+            '  if (index < descriptions.length) {',
+            '    textArea.value = descriptions[index];',
+            '',
+            '    // Dispatch input and change events to ensure the website\'s framework registers the update',
+            '    textArea.dispatchEvent(new Event(\'input\', { bubbles: true }));',
+            '    textArea.dispatchEvent(new Event(\'change\', { bubbles: true }));',
+            '  }',
+            '});',
+            '',
+            'console.log("' + String.fromCodePoint(0x2705) + ' Successfully pushed " + Math.min(descriptions.length, textAreas.length) + " descriptions.");'
+        ];
+
+        var script = scriptParts.join('\n');
+
+        copyToClipboard(script);
+        showToast('Script with ' + descriptions.length + ' descriptions copied!');
+
+        var original = btnGenerateScriptText.textContent;
+        btnGenerateScriptText.textContent = 'Copied!';
+        setTimeout(function() { btnGenerateScriptText.textContent = original; }, 1800);
     });
 
     // Helper: Copy string to clipboard
@@ -287,6 +390,110 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
     }
+
+    // ── AI Enhance Modal Logic ──────────────────────────────────────────────
+
+    function openAiModal(description, triggerBtn) {
+        // Show overlay
+        aiModalOverlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+
+        // Reset state
+        aiModalOriginalText.textContent = description;
+        aiSuggestions.innerHTML = '';
+        aiSuggestions.classList.add('hidden');
+        aiModalError.classList.add('hidden');
+        aiModalLoading.classList.remove('hidden');
+
+        // Set trigger button to loading
+        const originalBtnHTML = triggerBtn ? triggerBtn.innerHTML : '';
+        if (triggerBtn) {
+            triggerBtn.disabled = true;
+            triggerBtn.innerHTML = `<span class="ai-btn-spinner"></span> Generating...`;
+        }
+
+        fetch('/api/ai-enhance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description })
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Server error');
+            return data;
+        })
+        .then(data => {
+            aiModalLoading.classList.add('hidden');
+            renderSuggestions(data.suggestions);
+        })
+        .catch(err => {
+            aiModalLoading.classList.add('hidden');
+            aiModalError.classList.remove('hidden');
+            aiModalErrorText.textContent = err.message;
+        })
+        .finally(() => {
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = originalBtnHTML;
+            }
+        });
+    }
+
+    function renderSuggestions(suggestions) {
+        aiSuggestions.innerHTML = '';
+        suggestions.forEach((text, i) => {
+            const card = document.createElement('div');
+            card.className = 'ai-suggestion-card';
+            card.innerHTML = `
+                <div class="ai-suggestion-header">
+                    <span class="ai-suggestion-num">ជម្រើសទី ${i + 1}</span>
+                    <button type="button" class="btn btn-secondary btn-sm ai-suggestion-copy">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+                <p class="ai-suggestion-text">${escapeHtml(text)}</p>
+            `;
+            const copyBtn = card.querySelector('.ai-suggestion-copy');
+            copyBtn.addEventListener('click', () => {
+                copyToClipboard(text);
+                copyBtn.innerHTML = `
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Copied!
+                `;
+                showToast('Copied to clipboard!');
+                setTimeout(() => {
+                    copyBtn.innerHTML = `
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    `;
+                }, 1800);
+            });
+            aiSuggestions.appendChild(card);
+        });
+        aiSuggestions.classList.remove('hidden');
+    }
+
+    function closeAiModal() {
+        aiModalOverlay.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+
+    aiModalClose.addEventListener('click', closeAiModal);
+    aiModalOverlay.addEventListener('click', (e) => {
+        if (e.target === aiModalOverlay) closeAiModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && aiModalOverlay.classList.contains('open')) closeAiModal();
+    });
 
     // Initial URL count badge check
     updateUrlCount();
